@@ -9,41 +9,63 @@ class YerlesimMapPage extends StatefulWidget {
 }
 
 class _YerlesimMapPageState extends State<YerlesimMapPage> {
-  // class _YerlesimMapPageState içinde:
-  List<YerlesimYeri> _all = []; // tüm liste
-  List<YerlesimYeri> _view = []; // ekranda görünen altlar
-  int? _currentParentId; // null = kök
-  final List<YerlesimYeri> _path = []; // breadcrumb
-
-  bool _isChildOf(YerlesimYeri c, int pid) =>
-      c.id != c.ustYerlesimId && (c.ustYerlesimId ?? -1) == pid;
-
-  bool _hasChildLocal(int id) => _items.any((e) => _isChildOf(e, id));
-
   final _svc = YerlesimService();
   final _antrepoIdCtrl =
-      TextEditingController(text: '3'); // login'e göre güncelle
+      TextEditingController(text: '3'); // login sonrası set edilebilir
   bool _loading = false;
   String? _error;
-  List<YerlesimYeri> _items = [];
+
+  // Hiyerarşi durumu
+  List<YerlesimYeri> _all = []; // tüm kayıtlar
+  List<YerlesimYeri> _view = []; // ekranda görünen altlar
+  int? _currentParentId; // null = kök
+  final List<YerlesimYeri> _path = []; // breadcrumb yolu
+
+  // Seçim modu
+  final Set<int> _selected = {};
+  bool _selectionMode = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Yerleştirme'),
-        leading: _currentParentId != null
+        title: Text(_selectionMode ? 'Seçim modu' : 'Yerleştirme'),
+        leading: _selectionMode
             ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => _goToPathIndex(_path.length - 2),
+                tooltip: 'Seçimi iptal et',
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectionMode,
               )
-            : null,
+            : (_currentParentId != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => _goToPathIndex(_path.length - 2),
+                  )
+                : null),
         actions: [
-          IconButton(
-            tooltip: 'Yenile',
-            icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : _load,
-          ),
+          if (_selectionMode) ...[
+            IconButton(
+              tooltip: 'Seçilenleri sil',
+              icon: const Icon(Icons.delete_sweep_outlined),
+              onPressed: _selected.isEmpty ? null : _deleteSelected,
+            ),
+          ] else ...[
+            IconButton(
+              tooltip: 'Toplu Ekle',
+              icon: const Icon(Icons.playlist_add),
+              onPressed: _openBulkCreateDialog,
+            ),
+            IconButton(
+              tooltip: 'Yenile',
+              icon: const Icon(Icons.refresh),
+              onPressed: _loading ? null : _load,
+            ),
+            IconButton(
+              tooltip: 'Diagnostics',
+              icon: const Icon(Icons.bug_report_outlined),
+              onPressed: () => Navigator.of(context).pushNamed('/debug'),
+            ),
+          ],
         ],
       ),
       body: Padding(
@@ -66,18 +88,21 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                   child: const Text('Yükle'),
                 ),
                 const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: _openCreateDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Yeni Yerleşim'),
-                ),
+                if (!_selectionMode)
+                  ElevatedButton.icon(
+                    onPressed: _openCreateDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Yeni Yerleşim'),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),
             if (_loading) const LinearProgressIndicator(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // Breadcrumb
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -86,7 +111,7 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   InkWell(
-                    onTap: _goRoot,
+                    onTap: _selectionMode ? null : _goRoot,
                     child: const Padding(
                       padding: EdgeInsets.all(6),
                       child: Text('Kök', style: TextStyle(color: Colors.blue)),
@@ -95,7 +120,7 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                   for (int i = 0; i < _path.length; i++) ...[
                     const Text(' / ', style: TextStyle(color: Colors.black54)),
                     InkWell(
-                      onTap: () => _goToPathIndex(i),
+                      onTap: _selectionMode ? null : () => _goToPathIndex(i),
                       child: Padding(
                         padding: const EdgeInsets.all(6),
                         child: Text(_path[i].kod,
@@ -107,6 +132,8 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
               ),
             ),
             const SizedBox(height: 8),
+
+            // Liste
             Expanded(
               child: _view.isEmpty
                   ? const Center(child: Text('Kayıt yok'))
@@ -115,38 +142,97 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (_, i) {
                         final y = _view[i];
-                        final hasChild = _hasChild(y.id);
+                        final hasChild = _hasChildLocal(y.id);
+                        final childCount = _childCount(y.id);
+                        final selected = _selected.contains(y.id);
+
                         return ListTile(
-                          onTap: () => _open(y), // ← içeri gir
+                          onTap: () {
+                            if (_selectionMode) {
+                              _toggleSelected(y.id);
+                            } else {
+                              _open(y);
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_selectionMode) {
+                              _selectionMode = true;
+                              _selected.clear();
+                            }
+                            _toggleSelected(y.id);
+                          },
+                          leading: _selectionMode
+                              ? Checkbox(
+                                  value: selected,
+                                  onChanged: (_) => _toggleSelected(y.id),
+                                )
+                              : null,
                           title: Text(y.kod),
-                          subtitle: Text(
-                              'id=${y.id} • üst=${y.ustYerlesimId ?? '-'} • tip=${y.tip ?? '-'}'),
-                          trailing: Wrap(
-                            spacing: 8,
-                            children: [
-                              // Altlarıyla sil butonun varsa bırak
-                              // ...
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip:
-                                    hasChild ? 'Önce altları silin' : 'Sil',
-                                onPressed: hasChild ? null : () => _delete(y),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () => _openEditDialog(y),
-                              ),
-                            ],
-                          ),
+                          subtitle: Text('$childCount alt öğe'),
+                          trailing: _selectionMode
+                              ? null
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.chevron_right),
+                                    const SizedBox(width: 4),
+                                    PopupMenuButton<String>(
+                                      onSelected: (v) async {
+                                        if (v == 'edit') {
+                                          await _openEditDialog(y);
+                                        } else if (v == 'delete') {
+                                          await _delete(y);
+                                        } else if (v == 'cascade') {
+                                          await _deleteCascade(y);
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: ListTile(
+                                            leading: Icon(Icons.edit_outlined),
+                                            title: Text('Düzenle'),
+                                          ),
+                                        ),
+                                        if (!hasChild)
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: ListTile(
+                                              leading:
+                                                  Icon(Icons.delete_outline),
+                                              title: Text('Sil'),
+                                            ),
+                                          ),
+                                        if (hasChild)
+                                          const PopupMenuItem(
+                                            value: 'cascade',
+                                            child: ListTile(
+                                              leading: Icon(Icons
+                                                  .cleaning_services_outlined),
+                                              title: Text('Altlarıyla sil'),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                         );
                       },
                     ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
+
+  // ---------- Hiyerarşi yardımcıları ----------
+  bool _isChildOf(YerlesimYeri c, int pid) =>
+      c.id != c.ustYerlesimId && (c.ustYerlesimId ?? -1) == pid;
+
+  bool _hasChildLocal(int id) => _all.any((e) => _isChildOf(e, id));
+
+  int _childCount(int id) => _all.where((e) => _isChildOf(e, id)).length;
 
   void _applyFilter() {
     final parentKey = _currentParentId ?? -1;
@@ -176,8 +262,51 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
     _applyFilter();
   }
 
-  bool _hasChild(int id) => _all.any((e) => _isChildOf(e, id));
+  // ---------- Seçim modu ----------
+  void _toggleSelected(int id) {
+    if (_selected.contains(id)) {
+      _selected.remove(id);
+    } else {
+      _selected.add(id);
+    }
+    setState(() {});
+  }
 
+  void _exitSelectionMode() {
+    _selectionMode = false;
+    _selected.clear();
+    setState(() {});
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selected.isEmpty) return;
+    int ok = 0, skipped = 0;
+    for (final id in _selected.toList()) {
+      final y = _all.firstWhere(
+        (e) => e.id == id,
+        orElse: () => YerlesimYeri(
+            id: id, antrepoId: int.tryParse(_antrepoIdCtrl.text) ?? 3, kod: ''),
+      );
+      if (_hasChildLocal(y.id)) {
+        skipped++;
+        continue;
+      }
+      try {
+        await _svc.delete(y.id, antrepoId: y.antrepoId);
+        ok++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    _exitSelectionMode();
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Silinen: $ok • Atlanan: $skipped')),
+    );
+  }
+
+  // ---------- Veri işlemleri ----------
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -186,61 +315,61 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
     try {
       final id = int.tryParse(_antrepoIdCtrl.text) ?? 3;
       _all = await _svc.getAntrepoYerlesimler(id);
-      _applyFilter(); // <- hiyerarşiye göre görünümü kur
+      _applyFilter();
     } catch (e) {
-      setState(() => _error = 'Yükleme hatası: $e');
+      setState(() {
+        _error = 'Yükleme hatası: $e';
+      });
     } finally {
       setState(() => _loading = false);
     }
   }
 
   Future<void> _delete(YerlesimYeri y) async {
-    final ok = await _svc.delete(y.id, antrepoId: y.antrepoId);
-    if (!ok) {
-      setState(() => _error = 'Silinemedi (id=${y.id})');
-      return;
+    try {
+      await _svc.delete(y.id, antrepoId: y.antrepoId);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Silindi')));
+    } catch (e) {
+      setState(() => _error = 'Silme hatası: $e');
     }
-    await _load();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Silindi')));
   }
 
+  // Kademeli sil (altlarıyla)
   Future<void> _deleteCascade(YerlesimYeri root) async {
     setState(() => _error = null);
 
-    // self-parent düzelt
     if (root.ustYerlesimId == root.id) {
-      await _svc.update(YerlesimYeri(
-        id: root.id,
-        ustYerlesimId: null,
-        antrepoId: root.antrepoId,
-        kod: root.kod,
-        sira: root.sira,
-        tip: root.tip,
-        aciklama: root.aciklama,
-        aktif: root.aktif,
-      ));
+      try {
+        await _svc.update(YerlesimYeri(
+          id: root.id,
+          ustYerlesimId: null,
+          antrepoId: root.antrepoId,
+          kod: root.kod,
+          sira: root.sira,
+          tip: root.tip,
+          aciklama: root.aciklama,
+          aktif: root.aktif,
+        ));
+      } catch (_) {}
     }
 
     await _load();
-    bool isChildOf(YerlesimYeri c, int pid) =>
-        c.id != c.ustYerlesimId && (c.ustYerlesimId ?? -1) == pid;
-    bool hasChildLocal(int id) => _items.any((e) => isChildOf(e, id));
+    bool hasChildLocal(int id) => _all.any((e) => _isChildOf(e, id));
 
-    // çocuk yoksa tek sil
     if (!hasChildLocal(root.id)) {
       await _delete(root);
       return;
     }
 
-    // ebeveyn->çocuklar
     final byParent = <int, List<YerlesimYeri>>{};
-    for (final e in _items) {
+    for (final e in _all) {
       if (e.id == e.ustYerlesimId) continue;
       (byParent[e.ustYerlesimId ?? -1] ??= []).add(e);
     }
 
-    // post-order
     final order = <YerlesimYeri>[];
     void dfs(int id) {
       for (final c in byParent[id] ?? const <YerlesimYeri>[]) {
@@ -252,34 +381,35 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
     dfs(root.id);
     order.add(root);
 
-    // tek tek ve doğrulamalı sil
     for (final n in order) {
-      final ok = await _svc.delete(n.id, antrepoId: n.antrepoId);
-      if (!ok) {
-        setState(() => _error = 'Silinemedi (id=${n.id})');
+      try {
+        await _svc.delete(n.id, antrepoId: n.antrepoId);
+      } catch (e) {
+        setState(() => _error = 'Silme hatası (id=${n.id}): $e');
         return;
       }
     }
 
     await _load();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Kademeli silme tamamlandı')),
-    );
+        const SnackBar(content: Text('Kademeli silme tamamlandı')));
   }
 
+  // ---------- Oluştur / Düzenle ----------
   Future<void> _openCreateDialog() async {
     final antrepoId = int.tryParse(_antrepoIdCtrl.text) ?? 3;
     final created = await showDialog<YerlesimYeri>(
       context: context,
       builder: (_) => _YerlesimDialog(
         antrepoId: antrepoId,
-        parentId: _currentParentId, // ← aktif ebeveyn
+        parentId: _currentParentId, // aktif ebeveyn altında oluştur
       ),
     );
     if (created != null) {
       try {
         await _svc.create(created);
-        await _load(); // görünüm zaten _currentParentId ile filtreli
+        await _load();
       } catch (e) {
         setState(() => _error = 'Oluşturma hatası: $e');
       }
@@ -300,13 +430,51 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
       }
     }
   }
+
+  // ---------- Toplu ekleme ----------
+  Future<void> _openBulkCreateDialog() async {
+    final res = await showDialog<_BulkParams>(
+      context: context,
+      builder: (_) => const _BulkDialog(),
+    );
+    if (res == null) return;
+    await _bulkCreate(res);
+  }
+
+  Future<void> _bulkCreate(_BulkParams p) async {
+    final antrepoId = int.tryParse(_antrepoIdCtrl.text) ?? 3;
+    final parentId = _currentParentId;
+    int done = 0;
+
+    for (var i = 0; i < p.count; i++) {
+      final name = '${p.base}${p.sep}${p.start + i}'.trim();
+      try {
+        await _svc.create(YerlesimYeri(
+          id: 0,
+          antrepoId: antrepoId,
+          ustYerlesimId: parentId,
+          kod: name,
+          tip: p.tip,
+          aciklama: p.aciklama.isEmpty ? 'toplu' : p.aciklama,
+          aktif: true,
+        ));
+        done++;
+      } catch (_) {}
+    }
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Eklenen: $done / ${p.count}')),
+    );
+  }
 }
 
+// ---------- Dialoglar ----------
 class _YerlesimDialog extends StatefulWidget {
   final int antrepoId;
   final int? parentId;
   final YerlesimYeri? editing;
-  const _YerlesimDialog({required this.antrepoId, this.editing, this.parentId});
+  const _YerlesimDialog({required this.antrepoId, this.parentId, this.editing});
 
   @override
   State<_YerlesimDialog> createState() => _YerlesimDialogState();
@@ -391,13 +559,9 @@ class _YerlesimDialogState extends State<_YerlesimDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Vazgeç'),
-        ),
-        ElevatedButton(
-          onPressed: _onSubmit,
-          child: const Text('Kaydet'),
-        ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Vazgeç')),
+        ElevatedButton(onPressed: _onSubmit, child: const Text('Kaydet')),
       ],
     );
   }
@@ -413,11 +577,11 @@ class _YerlesimDialogState extends State<_YerlesimDialog> {
       final y = YerlesimYeri(
         id: 0,
         antrepoId: widget.antrepoId,
-        ustYerlesimId: widget.parentId, // ← ebeveyn burada set
+        ustYerlesimId: widget.parentId, // aktif ebeveyn altında oluştur
         kod: _kodCtrl.text.trim(),
-        sira: int.tryParse(_siraCtrl.text),
-        tip: _tipCtrl.text.trim(),
-        aciklama: _aciklamaCtrl.text.trim(),
+        sira: siraVal,
+        tip: tipVal,
+        aciklama: aciklamaVal,
         aktif: _aktif,
       );
       Navigator.pop(context, y);
@@ -425,14 +589,256 @@ class _YerlesimDialogState extends State<_YerlesimDialog> {
       final y = YerlesimYeri(
         id: widget.editing!.id,
         antrepoId: widget.antrepoId,
+        ustYerlesimId: widget.editing!.ustYerlesimId,
         kod: _kodCtrl.text.trim(),
         sira: siraVal,
         tip: tipVal,
         aciklama: aciklamaVal,
         aktif: _aktif,
-        ustYerlesimId: widget.editing!.ustYerlesimId,
       );
       Navigator.pop(context, y);
     }
+  }
+}
+
+class _TemplateParams {
+  final String koridorAd;
+  final String rafAd;
+  final int rafSayisi;
+  final String gozAd;
+  final int gozSayisi;
+  _TemplateParams(
+      this.koridorAd, this.rafAd, this.rafSayisi, this.gozAd, this.gozSayisi);
+}
+
+class _TemplateDialog extends StatefulWidget {
+  const _TemplateDialog();
+  @override
+  State<_TemplateDialog> createState() => _TemplateDialogState();
+}
+
+class _TemplateDialogState extends State<_TemplateDialog> {
+  final _koridor = TextEditingController(text: 'Koridor-A');
+  final _rafAd = TextEditingController(text: 'Raf');
+  final _rafSay = TextEditingController(text: '2');
+  final _gozAd = TextEditingController(text: 'Göz');
+  final _gozSay = TextEditingController(text: '2');
+  final _form = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _koridor.dispose();
+    _rafAd.dispose();
+    _rafSay.dispose();
+    _gozAd.dispose();
+    _gozSay.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Şablondan Ekle'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                  controller: _koridor,
+                  decoration: const InputDecoration(labelText: 'Koridor Adı'),
+                  validator: (v) => v!.trim().isEmpty ? 'Gerekli' : null),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                      child: TextFormField(
+                          controller: _rafAd,
+                          decoration:
+                              const InputDecoration(labelText: 'Raf Adı'),
+                          validator: (v) =>
+                              v!.trim().isEmpty ? 'Gerekli' : null)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 120,
+                    child: TextFormField(
+                      controller: _rafSay,
+                      decoration:
+                          const InputDecoration(labelText: 'Raf Sayısı'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          (int.tryParse(v ?? '') ?? 0) > 0 ? null : '>0 olmalı',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                      child: TextFormField(
+                          controller: _gozAd,
+                          decoration:
+                              const InputDecoration(labelText: 'Göz Adı'),
+                          validator: (v) =>
+                              v!.trim().isEmpty ? 'Gerekli' : null)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 120,
+                    child: TextFormField(
+                      controller: _gozSay,
+                      decoration:
+                          const InputDecoration(labelText: 'Göz Sayısı'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          (int.tryParse(v ?? '') ?? 0) > 0 ? null : '>0 olmalı',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Vazgeç')),
+        FilledButton(
+          onPressed: () {
+            if (!_form.currentState!.validate()) return;
+            Navigator.pop(
+              context,
+              _TemplateParams(
+                _koridor.text.trim(),
+                _rafAd.text.trim(),
+                int.parse(_rafSay.text.trim()),
+                _gozAd.text.trim(),
+                int.parse(_gozSay.text.trim()),
+              ),
+            );
+          },
+          child: const Text('Oluştur'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BulkParams {
+  final String base;
+  final int count;
+  final int start;
+  final String sep;
+  final String tip;
+  final String aciklama;
+  _BulkParams(
+      this.base, this.count, this.start, this.sep, this.tip, this.aciklama);
+}
+
+class _BulkDialog extends StatefulWidget {
+  const _BulkDialog();
+  @override
+  State<_BulkDialog> createState() => _BulkDialogState();
+}
+
+class _BulkDialogState extends State<_BulkDialog> {
+  final _base = TextEditingController();
+  final _count = TextEditingController(text: '1');
+  final _start = TextEditingController(text: '1');
+  final _sep = TextEditingController(text: '-');
+  final _tip = TextEditingController(text: 'bolge');
+  final _ack = TextEditingController(text: 'toplu ekleme');
+  final _form = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _base.dispose();
+    _count.dispose();
+    _start.dispose();
+    _sep.dispose();
+    _tip.dispose();
+    _ack.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Toplu Ekle'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                  controller: _base,
+                  decoration: const InputDecoration(labelText: 'Ad (taban)'),
+                  validator: (v) => v!.trim().isEmpty ? 'Gerekli' : null),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _count,
+                      decoration: const InputDecoration(labelText: 'Adet'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          (int.tryParse(v ?? '') ?? 0) > 0 ? null : '>0 olmalı',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _start,
+                      decoration: const InputDecoration(labelText: 'Başlangıç'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: _sep,
+                  decoration: const InputDecoration(labelText: 'Ayraç')),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: _tip,
+                  decoration: const InputDecoration(labelText: 'Tip')),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: _ack,
+                  decoration: const InputDecoration(labelText: 'Açıklama')),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Vazgeç')),
+        FilledButton(
+          onPressed: () {
+            if (!_form.currentState!.validate()) return;
+            Navigator.pop(
+              context,
+              _BulkParams(
+                _base.text.trim(),
+                int.tryParse(_count.text.trim()) ?? 1,
+                int.tryParse(_start.text.trim()) ?? 1,
+                _sep.text.isEmpty ? '-' : _sep.text,
+                _tip.text.trim().isEmpty ? 'bolge' : _tip.text.trim(),
+                _ack.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Ekle'),
+        ),
+      ],
+    );
   }
 }
