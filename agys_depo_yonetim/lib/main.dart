@@ -1,3 +1,4 @@
+import 'package:antrepo_client/core/api_test.dart';
 import 'package:flutter/material.dart';
 import 'features/auth/login_page.dart';
 import 'features/yerlesim/yerlesim_map_page.dart';
@@ -14,10 +15,12 @@ class AntrepoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Antrepo',
       theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
+      debugShowCheckedModeBanner: false,
       initialRoute: '/login',
       routes: {
         '/login': (_) => const LoginPage(),
         '/yerlesim': (_) => const YerlesimMapPage(),
+        '/debug': (_) => const ApiDiagnosticsPage(), // ← eklendi
       },
     );
   }

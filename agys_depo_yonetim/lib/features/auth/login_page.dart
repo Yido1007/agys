@@ -74,22 +74,12 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      await AuthService().login(
+      final token = await AuthService().login(
         eposta: _emailCtrl.text.trim(),
         sifre: _passCtrl.text,
         antrepoKodu: _antrepoCtrl.text.trim(),
       );
-
-      // JWT inceleme – BURAYA
-      String _part(String t, int i) => utf8.decode(base64Url.decode(t
-          .split('.')[i]
-          .padRight((t.split('.')[i].length + 3) ~/ 4 * 4, '=')));
-      final t = await AppStorage.readToken();
-      if (t != null) {
-        print('[JWT-HEADER] ${_part(t, 0)}');
-        print('[JWT-PAYLOAD] ${_part(t, 1)}');
-      }
-
+      // token boş değilse zaten başarı; login() hata durumunda throw ediyor
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/yerlesim');
     } catch (e) {

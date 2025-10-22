@@ -19,34 +19,62 @@ class YerlesimYeri {
     this.aktif,
   });
 
-  factory YerlesimYeri.fromJson(Map<String, dynamic> j) => YerlesimYeri(
-        id: j['id'] as int,
-        ustYerlesimId: j['ustYerlesimId'] as int?,
-        antrepoId: j['antrepoId'] as int? ?? j['antrepoID'] as int? ?? 0,
-        kod: j['kod']?.toString() ?? '',
-        sira: j['sira'] as int?,
-        tip: j['tip']?.toString(),
-        aciklama: j['aciklama']?.toString(),
-        aktif: j['aktif'] as bool?,
-      );
+  factory YerlesimYeri.fromJson(Map<String, dynamic> j) {
+    int _i(dynamic v) => v is int ? v : int.tryParse('${v ?? ''}') ?? 0;
+    int? _in(dynamic v) =>
+        v == null ? null : (v is int ? v : int.tryParse('$v'));
+    String? _s(dynamic v) => v == null ? null : v.toString();
+    bool? _b(dynamic v) {
+      if (v == null) return null;
+      if (v is bool) return v;
+      final s = v.toString().toLowerCase();
+      if (s == 'true' || s == '1') return true;
+      if (s == 'false' || s == '0') return false;
+      return null;
+    }
 
-  Map<String, dynamic> toCreateJson() => {
-        'antrepoId': antrepoId,
-        'ustYerlesimId': ustYerlesimId,
-        'kod': kod,
-        'sira': sira ?? 0,
-        'tip': tip,
-        'aciklama': aciklama,
-        'aktif': aktif ?? true,
-      };
+    return YerlesimYeri(
+      id: _i(j['id']), // null gelirse 0
+      ustYerlesimId: _in(j['ustYerlesimId']),
+      antrepoId: _i(j['antrepoId'] ?? j['antrepoID']), // null gelirse 0
+      kod: _s(j['kod']) ?? '',
+      sira: _in(j['sira']),
+      tip: _s(j['tip']),
+      aciklama: _s(j['aciklama']),
+      aktif: _b(j['aktif']),
+    );
+  }
 
-  Map<String, dynamic> toUpdateJson() => {
+  Map<String, dynamic> toCreateJson() {
+    final m = {
+      'antrepoId': antrepoId, // zorunlu
+      'ustYerlesimId': ustYerlesimId, // yoksa gönderme
+      'kod': kod, // zorunlu
+      'sira': sira, // int?
+      'tip': tip?.substring(0, tip!.length > 50 ? 50 : tip!.length),
+      'aciklama': aciklama?.substring(
+          0, aciklama!.length > 500 ? 500 : aciklama!.length),
+      'aktif': aktif, // bool
+    };
+    m.removeWhere((k, v) => v == null);
+    return m;
+  }
+
+  Map<String, dynamic> toUpdateJson() => _clean({
         'id': id,
         'ustYerlesimId': ustYerlesimId,
         'kod': kod,
         'sira': sira,
-        'tip': tip,
-        'aciklama': aciklama,
+        'tip': _clip(tip, 50),
+        'aciklama': _clip(aciklama, 500),
         'aktif': aktif,
-      };
+      });
 }
+
+Map<String, dynamic> _clean(Map<String, dynamic> m) {
+  m.removeWhere((k, v) => v == null);
+  return m;
+}
+
+String? _clip(String? s, int n) =>
+    s == null ? null : (s.length <= n ? s : s.substring(0, n));

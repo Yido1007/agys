@@ -15,12 +15,22 @@ class ApiService {
       validateStatus: (s) => s != null && s < 500,
     ));
 
-    // mevcut token'ı başlatırken yükle
+    // Uygulama açıldığında token'ı yükle
     AppStorage.readToken().then((t) {
       if (t != null && t.isNotEmpty) {
         _dio.options.headers['Authorization'] = 'Bearer $t';
       }
     });
+
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (o, h) async {
+        final t = await AppStorage.readToken();
+        if (t != null && t.isNotEmpty) {
+          o.headers['Authorization'] = 'Bearer $t';
+        }
+        return h.next(o);
+      },
+    ));
 
     _dio.interceptors.add(LogInterceptor(
       request: true,
