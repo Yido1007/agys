@@ -178,7 +178,13 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                                     const SizedBox(width: 4),
                                     PopupMenuButton<String>(
                                       onSelected: (v) async {
-                                        if (v == 'edit') {
+                                        if (v == 'add_before') {
+                                          await _openRelativeCreate(y,
+                                              before: true);
+                                        } else if (v == 'add_after') {
+                                          await _openRelativeCreate(y,
+                                              before: false);
+                                        } else if (v == 'edit') {
                                           await _openEditDialog(y);
                                         } else if (v == 'delete') {
                                           await _delete(y);
@@ -187,6 +193,23 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                                         }
                                       },
                                       itemBuilder: (context) => [
+                                        const PopupMenuItem(
+                                          value: 'add_before',
+                                          child: ListTile(
+                                            leading: Icon(
+                                                Icons.arrow_upward_outlined),
+                                            title: Text('Öncesine ekle'),
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'add_after',
+                                          child: ListTile(
+                                            leading: Icon(
+                                                Icons.arrow_downward_outlined),
+                                            title: Text('Sonrasına ekle'),
+                                          ),
+                                        ),
+                                        const PopupMenuDivider(),
                                         const PopupMenuItem(
                                           value: 'edit',
                                           child: ListTile(
@@ -396,7 +419,43 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
         const SnackBar(content: Text('Kademeli silme tamamlandı')));
   }
 
-  // ---------- Oluştur / Düzenle ----------
+  Future<void> _openRelativeCreate(YerlesimYeri ref,
+      {required bool before}) async {
+    final antrepoId = int.tryParse(_antrepoIdCtrl.text) ?? 3;
+    // Yeni öğe, referans ile aynı ebeveyn altında
+    final created = await showDialog<YerlesimYeri>(
+      context: context,
+      builder: (_) => _YerlesimDialog(
+        antrepoId: antrepoId,
+        parentId: ref.ustYerlesimId,
+      ),
+    );
+    if (created == null) return;
+
+    // Sıra değerini referansa göre ayarla
+    final baseSira = ref.sira ?? 0;
+    final siraVal = before ? (baseSira - 1) : (baseSira + 1);
+
+    final y = YerlesimYeri(
+      id: 0,
+      antrepoId: antrepoId,
+      ustYerlesimId: ref.ustYerlesimId,
+      kod: created.kod,
+      sira: siraVal,
+      tip: created.tip,
+      aciklama: created.aciklama,
+      aktif: created.aktif,
+    );
+
+    try {
+      await _svc.create(y);
+      await _load();
+    } catch (e) {
+      setState(() => _error = 'Oluşturma hatası: $e');
+    }
+  }
+
+// ---------- Oluştur / Düzenle ----------
   Future<void> _openCreateDialog() async {
     final antrepoId = int.tryParse(_antrepoIdCtrl.text) ?? 3;
     final created = await showDialog<YerlesimYeri>(
