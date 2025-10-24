@@ -7,17 +7,18 @@ class YerlesimYeri {
   final String? tip;
   final String? aciklama;
   final bool? aktif;
+  final String? barkod;
 
-  YerlesimYeri({
-    required this.id,
-    required this.antrepoId,
-    required this.kod,
-    this.ustYerlesimId,
-    this.sira,
-    this.tip,
-    this.aciklama,
-    this.aktif,
-  });
+  YerlesimYeri(
+      {required this.id,
+      required this.antrepoId,
+      required this.kod,
+      this.ustYerlesimId,
+      this.sira,
+      this.tip,
+      this.aciklama,
+      this.aktif,
+      this.barkod});
 
   factory YerlesimYeri.fromJson(Map<String, dynamic> j) {
     int _i(dynamic v) => v is int ? v : int.tryParse('${v ?? ''}') ?? 0;
@@ -42,6 +43,7 @@ class YerlesimYeri {
       tip: _s(j['tip']),
       aciklama: _s(j['aciklama']),
       aktif: _b(j['aktif']),
+      barkod: j['barkod'] ?? j['Barkod'],
     );
   }
 
@@ -55,6 +57,7 @@ class YerlesimYeri {
       'aciklama': aciklama?.substring(
           0, aciklama!.length > 500 ? 500 : aciklama!.length),
       'aktif': aktif, // bool
+      'barkod': barkod ?? '',
     };
     m.removeWhere((k, v) => v == null);
     return m;
@@ -68,6 +71,7 @@ class YerlesimYeri {
         'tip': _clip(tip, 50),
         'aciklama': _clip(aciklama, 500),
         'aktif': aktif,
+        'barkod': barkod ?? '',
       });
 }
 

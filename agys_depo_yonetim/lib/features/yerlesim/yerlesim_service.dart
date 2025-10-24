@@ -5,6 +5,9 @@ import 'models.dart';
 class YerlesimService {
   final Dio _dio = ApiService.instance.dio;
 
+  bool _ok(Response r) =>
+      r.statusCode != null && r.statusCode! >= 200 && r.statusCode! < 300;
+
   Future<List<YerlesimYeri>> getAntrepoYerlesimler(int antrepoId) async {
     final r = await _dio.get('/api/YerlesimYeri/antrepo/$antrepoId');
     if (r.statusCode == 200) {
@@ -19,32 +22,52 @@ class YerlesimService {
         list = const [];
       }
       return list
-          .map((e) => YerlesimYeri.fromJson(Map<String, dynamic>.from(e)))
+          .map((e) => YerlesimYeri.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
     }
-    throw DioException.badResponse(
-      requestOptions: r.requestOptions,
-      response: r,
-      statusCode: r.statusCode ?? 500,
-    );
+    return <YerlesimYeri>[];
+  }
+
+  Future<YerlesimYeri?> getById(int id) async {
+    final r = await _dio.get('/api/YerlesimYeri/$id');
+    if (_ok(r) && r.data != null) {
+      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
+    }
+    return null;
   }
 
   Future<YerlesimYeri> create(YerlesimYeri y) async {
-    final r = await _dio.post('/api/YerlesimYeri', data: y.toCreateJson());
-    if (r.statusCode == 200 || r.statusCode == 201) {
-      if (r.data is Map<String, dynamic>) {
-        final map = Map<String, dynamic>.from(r.data);
-        final payload = map['data'] is Map<String, dynamic>
-            ? Map<String, dynamic>.from(map['data'])
-            : map;
-        return YerlesimYeri.fromJson(payload);
-      }
-      return y;
-    }
-    throw DioException.badResponse(
+    Response r;
+
+    // V1: POST gövde
+    r = await _dio.post('/api/YerlesimYeri', data: {
+      ...y.toCreateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r))
+      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
+
+    // V2: POST /create
+    r = await _dio.post('/api/YerlesimYeri/create', data: {
+      ...y.toCreateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r))
+      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
+
+    // V3: Alternatif query
+    r = await _dio.post('/api/YerlesimYeri', queryParameters: {
+      ...y.toCreateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r))
+      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
+
+    throw DioException(
       requestOptions: r.requestOptions,
       response: r,
-      statusCode: r.statusCode ?? 500,
+      error: 'Create failed status=${r.statusCode}',
+      type: DioExceptionType.badResponse,
     );
   }
 
@@ -53,84 +76,177 @@ class YerlesimService {
 
     Response r;
 
-    // 1) PUT gövde
-    r = await _dio.put('/api/YerlesimYeri', data: y.toUpdateJson());
-    if (r.statusCode == 200 || r.statusCode == 204) return;
+    // V1: PUT gövde
+    r = await _dio.put('/api/YerlesimYeri', data: {
+      ...y.toUpdateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r)) return;
 
-    // 2) PUT path + gövde
-    r = await _dio.put('/api/YerlesimYeri/${y.id}', data: y.toUpdateJson());
-    if (r.statusCode == 200 || r.statusCode == 204) return;
+    // V2: PUT path + gövde
+    r = await _dio.put('/api/YerlesimYeri/${y.id}', data: {
+      ...y.toUpdateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r)) return;
 
-    // 3) POST /update
-    r = await _dio.post('/api/YerlesimYeri/update', data: y.toUpdateJson());
-    if (r.statusCode == 200 || r.statusCode == 204) return;
+    // V3: POST /update
+    r = await _dio.post('/api/YerlesimYeri/update', data: {
+      ...y.toUpdateJson(),
+      'barkod': (y.barkod ?? ''),
+    });
+    if (_ok(r)) return;
 
-    // 4) Method-Override
-    r = await _dio.post(
-      '/api/YerlesimYeri',
-      data: y.toUpdateJson(),
-      options: Options(headers: {'X-HTTP-Method-Override': 'PUT'}),
-    );
-    if (r.statusCode == 200 || r.statusCode == 204) return;
-
-    throw DioException.badResponse(
+    throw DioException(
       requestOptions: r.requestOptions,
       response: r,
-      statusCode: r.statusCode ?? 500,
+      error: 'Update failed status=${r.statusCode}',
+      type: DioExceptionType.badResponse,
     );
   }
 
-  Future<bool> delete(int id, {required int antrepoId}) async {
+  Future<bool> delete(int id, {int? antrepoId}) async {
     Response r;
-
-    bool ok(Response x) {
-      if (x.statusCode == 204) return true;
-      if (x.statusCode == 200) {
-        final d = x.data;
-        if (d == null || d.toString().isEmpty) return true;
-        if (d is Map) {
-          if (d['success'] == true) return true;
-          if (d['data'] == true) return true;
-        }
-      }
-      return false;
-    }
 
     Future<bool> verifyGone() async {
       try {
         final g = await _dio.get('/api/YerlesimYeri/$id');
-        // bazı API’ler bulunamayınca 404 veya null/data:false döner
-        final d = g.data;
-        final notFound = g.statusCode == 404 ||
-            (d is Map && (d['success'] == false || d['data'] == null)) ||
-            d == null;
-        return notFound;
-      } catch (e) {
-        // 404 gibi durumlarda Dio hata atar → silinmiş say
-        return true;
+        return g.statusCode == 404 || g.data == null || g.data == false;
+      } catch (_) {
+        return true; // 404 vb. durumları "yok" say
       }
     }
 
-    // V1: DELETE /{id}
-    r = await _dio.delete('/api/YerlesimYeri/$id');
-    if (ok(r)) return true;
-    if (await verifyGone()) return true;
+    // V1: DELETE /{id} + body (bazı API'lar DELETE body kabul ediyor)
+    try {
+      r = await _dio.delete('/api/YerlesimYeri/$id', data: {'barkod': ''});
+      if (_ok(r)) return true;
+      if (await verifyGone()) return true;
+    } catch (_) {}
 
-    // V2: POST /delete  (id + antrepoId)
-    r = await _dio.post('/api/YerlesimYeri/delete',
-        data: {'id': id, 'antrepoId': antrepoId});
-    if (ok(r)) return true;
-    if (await verifyGone()) return true;
+    // V2: POST /delete
+    try {
+      r = await _dio.post('/api/YerlesimYeri/delete',
+          data: {
+            'id': id,
+            'antrepoId': antrepoId,
+            'barkod': '',
+          }..removeWhere((k, v) => v == null));
+      final ok = (r.data == true) ||
+          (r.data is Map &&
+              (((r.data as Map)['success'] == true) ||
+                  ((r.data as Map)['data'] == true)));
+      if (ok) return true;
+      if (await verifyGone()) return true;
+    } catch (_) {}
 
-    // V3: DELETE ?id=&antrepoId=
-    r = await _dio.delete('/api/YerlesimYeri',
-        queryParameters: {'id': id, 'antrepoId': antrepoId});
-    if (ok(r)) return true;
-    if (await verifyGone()) return true;
+    // V3: DELETE ?id=&antrepoId=&barkod=
+    try {
+      r = await _dio.delete('/api/YerlesimYeri',
+          queryParameters: {
+            'id': id,
+            'antrepoId': antrepoId,
+            'barkod': '',
+          }..removeWhere((k, v) => v == null));
+      if (_ok(r)) return true;
+      if (await verifyGone()) return true;
+    } catch (_) {}
 
-    // logla
+    // log
     // ignore: avoid_print
-    print('[DELETE-ERR] id=$id code=${r.statusCode} body=${r.data}');
+    print('[DELETE-ERR] id=$id antrepoId=$antrepoId');
     return false;
+  }
+
+  Future<List<YerlesimYeri>> createMany(List<YerlesimYeri> items) async {
+    final payloads = items
+        .map((e) => {
+              ...e.toCreateJson(),
+              'barkod': (e.barkod ?? ''),
+            })
+        .toList();
+
+    Response r;
+
+    // V1
+    r = await _dio.post('/api/YerlesimYeri/bulk', data: payloads);
+    if (_ok(r)) {
+      final d = r.data;
+      final list = d is List
+          ? d
+          : (d['items'] ?? d['data'] ?? d['result'] ?? []) as List;
+      return list
+          .map((e) => YerlesimYeri.fromJson((e as Map).cast<String, dynamic>()))
+          .toList();
+    }
+
+    // V2
+    r = await _dio.post('/api/YerlesimYeri/createMany', data: payloads);
+    if (_ok(r)) {
+      final d = r.data;
+      final list = d is List
+          ? d
+          : (d['items'] ?? d['data'] ?? d['result'] ?? []) as List;
+      return list
+          .map((e) => YerlesimYeri.fromJson((e as Map).cast<String, dynamic>()))
+          .toList();
+    }
+
+    throw DioException(
+      requestOptions: r.requestOptions,
+      response: r,
+      error: 'Bulk create failed status=${r.statusCode}',
+      type: DioExceptionType.badResponse,
+    );
+  }
+
+  Future<int> deleteMany(List<int> ids, {int? antrepoId}) async {
+    Response r;
+
+    // V1: POST /bulkDelete
+    r = await _dio.post('/api/YerlesimYeri/bulkDelete',
+        data: {
+          'ids': ids,
+          'antrepoId': antrepoId,
+          'barkod': '',
+        }..removeWhere((k, v) => v == null));
+    if (_ok(r)) {
+      if (r.data is int) return r.data as int;
+      if (r.data is Map && (r.data['deleted'] is int))
+        return r.data['deleted'] as int;
+      if (r.data is List) return (r.data as List).length;
+      return ids.length; // başarı say
+    }
+
+    // V2: DELETE ?ids=&antrepoId=&barkod=
+    r = await _dio.delete('/api/YerlesimYeri',
+        queryParameters: {
+          'ids': ids,
+          'antrepoId': antrepoId,
+          'barkod': '',
+        }..removeWhere((k, v) => v == null));
+    if (_ok(r)) {
+      if (r.data is int) return r.data as int;
+      if (r.data is Map && (r.data['deleted'] is int))
+        return r.data['deleted'] as int;
+      if (r.data is List) return (r.data as List).length;
+      return ids.length;
+    }
+
+    throw DioException(
+      requestOptions: r.requestOptions,
+      response: r,
+      error: 'Bulk delete failed status=${r.statusCode}',
+      type: DioExceptionType.badResponse,
+    );
+  }
+
+  // Şimdilik kullanmıyoruz; uç hazır dursun.
+  Future<YerlesimYeri?> getByBarcode(String barkod) async {
+    final r = await _dio.get('/api/YerlesimYeri/barkod/$barkod');
+    if (_ok(r) && r.data != null) {
+      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
+    }
+    return null;
   }
 }
