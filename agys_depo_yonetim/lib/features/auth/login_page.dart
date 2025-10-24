@@ -1,6 +1,4 @@
-import 'dart:convert';
 
-import 'package:antrepo_client/core/storage.dart';
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 
@@ -81,7 +79,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       // token boş değilse zaten başarı; login() hata durumunda throw ediyor
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/yerlesim');
+      Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
       setState(() {
         _error = 'Giriş başarısız: $e';

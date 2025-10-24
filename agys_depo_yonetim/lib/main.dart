@@ -1,4 +1,5 @@
 import 'package:antrepo_client/core/api_test.dart';
+import 'package:antrepo_client/features/home/home_shell.dart';
 import 'package:flutter/material.dart';
 import 'features/auth/login_page.dart';
 import 'features/yerlesim/yerlesim_map_page.dart';
@@ -21,6 +22,7 @@ class AntrepoApp extends StatelessWidget {
         '/login': (_) => const LoginPage(),
         '/yerlesim': (_) => const YerlesimMapPage(),
         '/debug': (_) => const ApiDiagnosticsPage(), // ← eklendi
+        '/home': (_) => const HomeShell(), // ← eklendi
       },
     );
   }
