@@ -60,11 +60,6 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
               icon: const Icon(Icons.refresh),
               onPressed: _loading ? null : _load,
             ),
-            IconButton(
-              tooltip: 'Diagnostics',
-              icon: const Icon(Icons.bug_report_outlined),
-              onPressed: () => Navigator.of(context).pushNamed('/debug'),
-            ),
           ],
         ],
       ),
