@@ -83,10 +83,6 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _loading ? null : _load,
-                  child: const Text('Yükle'),
-                ),
                 const Spacer(),
                 if (!_selectionMode)
                   ElevatedButton.icon(
@@ -346,6 +342,11 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
     } finally {
       setState(() => _loading = false);
     }
+  }
+
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _delete(YerlesimYeri y) async {
