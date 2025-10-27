@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 
@@ -11,8 +10,9 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
+  final _emailCtrl =
+      TextEditingController(text: "adamar.antrepo@dalyanygm.com");
+  final _passCtrl = TextEditingController(text: "1234");
   final _antrepoCtrl = TextEditingController(text: 'C35000352'); // örnek
   bool _loading = false;
   String? _error;
