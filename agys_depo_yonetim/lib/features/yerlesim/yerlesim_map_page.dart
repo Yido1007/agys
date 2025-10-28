@@ -1,4 +1,3 @@
-import 'package:antrepo_client/features/yerlesim/qr_page.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'models.dart';
@@ -19,14 +18,14 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
     YerlesimYeri? target;
     try {
       target = _all.firstWhere(
-        (e) => (e.kod ?? '').trim() == norm,
+        (e) => (e.kod).trim() == norm,
       );
     } catch (_) {
       target = null;
     }
 
     // 2) Gerekirse sunucudan kod ile çek (opsiyonel: servisinizde “getByKod” varsa kullanın)
-    target ??= await _svc.getByKod?.call(norm);
+    target ??= await _svc.getByKod.call(norm);
 
     if (target == null) {
       setState(() => _error = 'Kayıt bulunamadı: $norm');
