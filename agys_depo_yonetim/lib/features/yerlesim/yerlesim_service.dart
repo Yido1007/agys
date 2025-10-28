@@ -242,11 +242,14 @@ class YerlesimService {
   }
 
   // Şimdilik kullanmıyoruz; uç hazır dursun.
-  Future<YerlesimYeri?> getByBarcode(String barkod) async {
-    final r = await _dio.get('/api/YerlesimYeri/barkod/$barkod');
-    if (_ok(r) && r.data != null) {
-      return YerlesimYeri.fromJson((r.data as Map).cast<String, dynamic>());
-    }
+  Future<YerlesimYeri?> getByKod(String kod) async {
+    try {
+      final res = await _dio
+          .get('/api/YerlesimYeri/by-kod', queryParameters: {'kod': kod});
+      if (res.statusCode == 200 && res.data != null) {
+        return YerlesimYeri.fromJson(res.data);
+      }
+    } catch (_) {}
     return null;
   }
 }

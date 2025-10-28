@@ -1,5 +1,6 @@
 import 'package:antrepo_client/features/yerlesim/qr_page.dart';
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'models.dart';
 import 'yerlesim_service.dart';
 
@@ -10,6 +11,49 @@ class YerlesimMapPage extends StatefulWidget {
 }
 
 class _YerlesimMapPageState extends State<YerlesimMapPage> {
+  void _openByKod(String kod) async {
+    // Kodları string olarak karşılaştır
+    final norm = kod.trim();
+
+    // 1) Lokal arama
+    YerlesimYeri? target;
+    try {
+      target = _all.firstWhere(
+        (e) => (e.kod ?? '').trim() == norm,
+      );
+    } catch (_) {
+      target = null;
+    }
+
+    // 2) Gerekirse sunucudan kod ile çek (opsiyonel: servisinizde “getByKod” varsa kullanın)
+    target ??= await _svc.getByKod?.call(norm);
+
+    if (target == null) {
+      setState(() => _error = 'Kayıt bulunamadı: $norm');
+      return;
+    }
+
+    // 3) Hiyerarşik yolu kur ve “içine” gir
+    final byId = {for (final e in _all) e.id: e};
+    final path = <YerlesimYeri>[];
+    YerlesimYeri? cur = target;
+    while (cur?.ustYerlesimId != null && cur!.ustYerlesimId != cur.id) {
+      final p = byId[cur.ustYerlesimId!];
+      if (p == null) break;
+      path.add(p);
+      cur = p;
+    }
+
+    setState(() {
+      _path
+        ..clear()
+        ..addAll(path.reversed)
+        ..add(target!);
+      _currentParentId = target.id; // içine gir
+      _applyFilter();
+    });
+  }
+
   final _svc = YerlesimService();
   final _antrepoIdCtrl =
       TextEditingController(text: '3'); // login sonrası set edilebilir
@@ -62,14 +106,17 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
               onPressed: _loading ? null : _load,
             ),
             IconButton(
-              tooltip: 'QR Tara',
               icon: const Icon(Icons.qr_code_scanner),
               onPressed: () async {
-                await Navigator.of(context).push<String>(
-                  MaterialPageRoute(builder: (_) => const QrScanPage()),
+                final scanned = await showDialog<String>(
+                  context: context,
+                  barrierDismissible: true,
+                  builder: (_) => const _QrScanDialog(),
                 );
+                if (scanned == null || scanned.trim().isEmpty) return;
+                _openByKod(scanned.trim());
               },
-            )
+            ),
           ],
         ],
       ),
@@ -904,6 +951,55 @@ class _BulkDialogState extends State<_BulkDialog> {
           child: const Text('Ekle'),
         ),
       ],
+    );
+  }
+}
+
+class _QrScanDialog extends StatefulWidget {
+  const _QrScanDialog({Key? key}) : super(key: key);
+  @override
+  State<_QrScanDialog> createState() => _QrScanDialogState();
+}
+
+class _QrScanDialogState extends State<_QrScanDialog> {
+  bool _done = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 360,
+        height: 420,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: MobileScanner(
+                onDetect: (capture) {
+                  if (_done) return;
+                  final barcodes = capture.barcodes;
+                  final raw = barcodes.isNotEmpty
+                      ? (barcodes.first.rawValue ?? '')
+                      : '';
+                  if (raw.isEmpty) return;
+                  _done = true;
+                  Navigator.of(context).pop(raw);
+                },
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
