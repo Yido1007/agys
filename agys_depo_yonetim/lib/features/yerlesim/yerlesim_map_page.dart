@@ -1,3 +1,4 @@
+import 'package:antrepo_client/features/yerlesim/qr_page.dart';
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'yerlesim_service.dart';
@@ -60,6 +61,15 @@ class _YerlesimMapPageState extends State<YerlesimMapPage> {
               icon: const Icon(Icons.refresh),
               onPressed: _loading ? null : _load,
             ),
+            IconButton(
+              tooltip: 'QR Tara',
+              icon: const Icon(Icons.qr_code_scanner),
+              onPressed: () async {
+                await Navigator.of(context).push<String>(
+                  MaterialPageRoute(builder: (_) => const QrScanPage()),
+                );
+              },
+            )
           ],
         ],
       ),

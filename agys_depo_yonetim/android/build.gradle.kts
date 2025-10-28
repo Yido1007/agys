@@ -1,3 +1,5 @@
+// android/build.gradle.kts  (root-android)
+
 allprojects {
     repositories {
         google()
@@ -5,15 +7,16 @@ allprojects {
     }
 }
 
-val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
-rootProject.layout.buildDirectory.value(newBuildDir)
+// Aggregate build folder one level up from android/
+val aggBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
+rootProject.layout.buildDirectory.set(aggBuildDir)
 
 subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
-subprojects {
-    project.evaluationDependsOn(":app")
+    // Each module writes into ../../build/<moduleName>
+    layout.buildDirectory.set(aggBuildDir.dir(project.name))
+
+    // Ensure :app is configured before others when needed
+    evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {
