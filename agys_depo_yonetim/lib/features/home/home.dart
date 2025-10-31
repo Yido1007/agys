@@ -1,6 +1,5 @@
-import 'dart:convert';
-
 import 'package:antrepo_client/core/api_service.dart';
+import 'package:antrepo_client/features/home/beyanname_kalem.dart';
 import 'package:antrepo_client/features/home/models.dart';
 import 'package:antrepo_client/features/home/stok_tutarlilik_service.dart';
 import 'package:flutter/material.dart';
@@ -13,28 +12,17 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
-  Future<void> _araBeyan(String no) async {
-    final id = _antrepoId;
-    final beyan = no.trim().toUpperCase();
-    if (id == null || beyan.isEmpty) return;
-
-    setState(() {
-      _searching = true;
-      _err = null;
-      _rows = const [];
-    });
-    try {
-      final data = await _stokSvc.beyanname(id, beyan);
-      setState(() => _rows = data);
-    } catch (e) {
-      setState(() => _err = 'Yükleme hatası');
-    } finally {
-      setState(() => _searching = false);
-    }
-  }
-
   void _openBeyanname(String beyannameNo) {
-    _araBeyan(beyannameNo); // Doğrudan içeri gir
+    final id = _antrepoId;
+    if (id == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BeyannameKalemPage(
+          antrepoId: id,
+          beyannameNo: beyannameNo,
+        ),
+      ),
+    );
   }
 
   List<BeyannameOzet> _beyannameList = const [];
@@ -139,7 +127,7 @@ class _HomeTabState extends State<HomeTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _BeyanDetaySheet(model: _detay),
+      builder: (_) => BeyanDetaySheet(model: _detay),
     );
   }
 
@@ -294,9 +282,9 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
-class _BeyanDetaySheet extends StatelessWidget {
+class BeyanDetaySheet extends StatelessWidget {
   final StokTutarlilikDetayDTO? model;
-  const _BeyanDetaySheet({required this.model});
+  const BeyanDetaySheet({required this.model});
 
   String _n(num? v, {int frac = 2}) =>
       v == null ? '-' : v.toStringAsFixed(frac);
