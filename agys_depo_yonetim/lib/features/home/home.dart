@@ -33,17 +33,8 @@ class _HomeTabState extends State<HomeTab> {
     }
   }
 
-  bool _showingKalem = false;
   void _openBeyanname(String beyannameNo) {
     _araBeyan(beyannameNo); // Doğrudan içeri gir
-  }
-
-  void _backToBeyannameList() {
-    setState(() {
-      _rows = const []; // kalem listeyi temizle
-      _showingKalem = false; // tile görünümüne dön
-      _err = null;
-    });
   }
 
   List<BeyannameOzet> _beyannameList = const [];
@@ -133,7 +124,6 @@ class _HomeTabState extends State<HomeTab> {
     try {
       final data = await _stokSvc.beyanname(id, no);
       setState(() => _rows = data);
-      _showingKalem = true;
     } catch (e) {
       setState(() => _err = 'Yükleme hatası');
     } finally {
@@ -308,59 +298,241 @@ class _BeyanDetaySheet extends StatelessWidget {
   final StokTutarlilikDetayDTO? model;
   const _BeyanDetaySheet({required this.model});
 
+  String _n(num? v, {int frac = 2}) =>
+      v == null ? '-' : v.toStringAsFixed(frac);
+
   @override
   Widget build(BuildContext context) {
     if (model == null) {
       return const SafeArea(
-          child: SizedBox(
-              height: 240, child: Center(child: CircularProgressIndicator())));
+        child: SizedBox(
+            height: 240, child: Center(child: CircularProgressIndicator())),
+      );
     }
     final m = model!;
-    final pretty = const JsonEncoder.withIndent('  ').convert({
-      'beyannameNo': m.beyannameNo,
-      'kalemNo': m.kalemNo,
-      'ticariTanim': m.ticariTanim,
-      'gtip': m.gtip,
-      'birimAdi': m.birimAdi,
-      'girenMiktar': m.girenMiktar,
-      'cikanMiktar': m.cikanMiktar,
-      'devamEdenGiris': m.devamEdenGiris,
-      'devamEdenCikis': m.devamEdenCikis,
-      'devamEdenIslemlerDahil': m.devamEdenIslemlerDahil,
-      'cikisHareketleri': m.cikisHareketleri
-          .map((e) => {
-                'cikisBeyannameNo': e.cikisBeyannameNo,
-                'cikisKalemNo': e.cikisKalemNo,
-                'cikanMiktar': e.cikanMiktar,
-                'cikisTarihi': e.cikisTarihi?.toIso8601String(),
-                'onaylandi': e.onaylandi,
-              })
-          .toList(),
-      'devamEdenIslemler': m.devamEdenIslemler
-          .map((e) => {
-                'islemTuru': e.islemTuru,
-                'beyannameNo': e.beyannameNo,
-                'kalemNo': e.kalemNo,
-                'miktar': e.miktar,
-                'islemTarihi': e.islemTarihi?.toIso8601String(),
-                'tutanakNo': e.tutanakNo,
-              })
-          .toList(),
-    });
 
     return SafeArea(
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: MediaQuery.of(context).size.height * 0.8,
         child: Scaffold(
           appBar: AppBar(title: const Text('Kalem Detayı')),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Text(pretty),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // === ÜST BİLGİLER ===
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8EFFA),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.description_outlined,
+                          color: Color(0xFF0B60D0)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (m.ticariTanim ?? '—'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                              'Beyanname: ${m.beyannameNo} • Kalem: ${m.kalemNo}',
+                              style: const TextStyle(color: Color(0xFF64748B))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // === TEMEL ALANLAR ===
+                _InfoRow(label: 'GTIP', value: m.gtip),
+                _InfoRow(label: 'Birim', value: m.birimAdi),
+
+                const SizedBox(height: 12),
+
+                // === MİKTAR KARTLARI ===
+                Row(
+                  children: [
+                    Expanded(
+                        child: _StatCard(
+                            title: 'Giren', value: _n(m.girenMiktar))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: _StatCard(
+                            title: 'Çıkan', value: _n(m.cikanMiktar))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: _StatCard(
+                            title: 'Devam Eden Giriş',
+                            value: _n(m.devamEdenGiris))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                        child: _StatCard(
+                            title: 'Devam Eden Çıkış',
+                            value: _n(m.devamEdenCikis))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: _StatCard(
+                            title: 'İşlemler Dahil',
+                            value: _n(m.devamEdenIslemlerDahil))),
+                    const SizedBox(width: 8),
+                    const Expanded(child: SizedBox()), // grid dengeleme
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // === ÇIKIŞ HAREKETLERİ ===
+                const _SectionTitle('Çıkış Hareketleri'),
+                if (m.cikisHareketleri.isEmpty)
+                  const _EmptyHint('Kayıt yok')
+                else
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: Color(0xFFE5E7EB)),
+                    ),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: m.cikisHareketleri.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final e = m.cikisHareketleri[i];
+                        final sub = <String>[
+                          if (e.cikanMiktar != null)
+                            'Miktar: ${_n(e.cikanMiktar)}',
+                          if (e.cikisTarihi != null)
+                            'Tarih: ${e.cikisTarihi!.toLocal().toString().split('.').first}',
+                          if (e.onaylandi != null)
+                            'Onay: ${e.onaylandi! ? 'Evet' : 'Hayır'}',
+                        ].join(' • ');
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.call_made,
+                              color: Color(0xFFEF4444)),
+                          title: Text(
+                            '${e.cikisBeyannameNo ?? '—'}'
+                            '${e.cikisKalemNo != null ? ' / ${e.cikisKalemNo}' : ''}',
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          subtitle: sub.isEmpty ? null : Text(sub),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+// === küçük yardımcılar (aynı dosyaya ekleyin) ===
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String? value;
+  const _InfoRow({required this.label, this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    if (value == null || value!.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 96,
+              child: Text(label,
+                  style: const TextStyle(color: Color(0xFF64748B)))),
+          Expanded(child: Text(value!)),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String title;
+  final String value;
+  const _StatCard({required this.title, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: Color(0xFFE5E7EB)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(color: Color(0xFF64748B))),
+            const SizedBox(height: 6),
+            Text(value,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)));
+}
+
+class _EmptyHint extends StatelessWidget {
+  final String text;
+  const _EmptyHint(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.info_outline, size: 18, color: Color(0xFF94A3B8)),
+            const SizedBox(width: 6),
+            Flexible(
+                child: Text(text,
+                    style: const TextStyle(color: Color(0xFF94A3B8)))),
+          ],
+        ),
+      );
 }
 
 class BeyannameTile extends StatelessWidget {
