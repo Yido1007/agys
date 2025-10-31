@@ -13,6 +13,41 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
+  Future<void> _araBeyan(String no) async {
+    final id = _antrepoId;
+    final beyan = no.trim().toUpperCase();
+    if (id == null || beyan.isEmpty) return;
+
+    setState(() {
+      _searching = true;
+      _err = null;
+      _rows = const [];
+    });
+    try {
+      final data = await _stokSvc.beyanname(id, beyan);
+      setState(() => _rows = data);
+    } catch (e) {
+      setState(() => _err = 'Yükleme hatası');
+    } finally {
+      setState(() => _searching = false);
+    }
+  }
+
+  bool _showingKalem = false;
+  void _openBeyanname(String beyannameNo) {
+    _araBeyan(beyannameNo); // Doğrudan içeri gir
+  }
+
+  void _backToBeyannameList() {
+    setState(() {
+      _rows = const []; // kalem listeyi temizle
+      _showingKalem = false; // tile görünümüne dön
+      _err = null;
+    });
+  }
+
+  List<BeyannameOzet> _beyannameList = const [];
+  bool _loadingBeyannameList = false;
   late final StokTutarlilikService _stokSvc;
 
   int? _antrepoId; // benimantrepom’dan gelir
@@ -38,6 +73,16 @@ class _HomeTabState extends State<HomeTab> {
     super.dispose();
   }
 
+  List<BeyannameOzet> _dedupBeyanname(List<BeyannameOzet> items) {
+    final seen = <String>{};
+    final out = <BeyannameOzet>[];
+    for (final x in items) {
+      if (x.beyannameNo.isEmpty) continue;
+      if (seen.add(x.beyannameNo)) out.add(x);
+    }
+    return out;
+  }
+
   Future<void> _loadAntrepo() async {
     try {
       final (id, _) = await _stokSvc.benimAntrepom();
@@ -45,11 +90,27 @@ class _HomeTabState extends State<HomeTab> {
         _antrepoId = id;
         _loadingAntrepo = false;
       });
+      if (id != null) {
+        _loadBeyannameList(id);
+      }
     } catch (e) {
       setState(() {
         _err = 'Antrepo bilgisi alınamadı';
         _loadingAntrepo = false;
       });
+    }
+  }
+
+  Future<void> _loadBeyannameList(int id) async {
+    setState(() => _loadingBeyannameList = true);
+    try {
+      final raw = await _stokSvc.listByAntrepo(id); // List<BeyannameOzet>
+      final uniq = _dedupBeyanname(raw);
+      setState(() => _beyannameList = uniq);
+    } catch (_) {
+      // sessiz geç
+    } finally {
+      setState(() => _loadingBeyannameList = false);
     }
   }
 
@@ -72,6 +133,7 @@ class _HomeTabState extends State<HomeTab> {
     try {
       final data = await _stokSvc.beyanname(id, no);
       setState(() => _rows = data);
+      _showingKalem = true;
     } catch (e) {
       setState(() => _err = 'Yükleme hatası');
     } finally {
@@ -94,7 +156,19 @@ class _HomeTabState extends State<HomeTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          leading: _rows.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    setState(() {
+                      _rows = const []; // kalem listesini temizle
+                      _err = null;
+                    });
+                  },
+                )
+              : null,
+        ),
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -163,9 +237,8 @@ class _HomeTabState extends State<HomeTab> {
               ),
             ),
             Expanded(
-              child: _rows.isEmpty
-                  ? const Center(child: Text('Kayıt yok'))
-                  : ListView.separated(
+              child: _rows.isNotEmpty
+                  ? ListView.separated(
                       itemCount: _rows.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (ctx, i) {
@@ -189,8 +262,43 @@ class _HomeTabState extends State<HomeTab> {
                               _openDetay(m.girisBaslikId, m.girisDetayId),
                         );
                       },
-                    ),
-            ),
+                    )
+                  : (_loadingAntrepo || _loadingBeyannameList)
+                      ? const Center(child: CircularProgressIndicator())
+                      : (_beyannameList.isEmpty
+                          ? const Center(child: Text('Kayıt yok'))
+                          : ListView.separated(
+                              itemCount: _beyannameList.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (ctx, i) {
+                                final b = _beyannameList[i];
+                                final subtitle = [
+                                  if (b.tarihText != null)
+                                    'Tarih: ${b.tarihText}',
+                                  if (b.kalemSayisi != null)
+                                    'Kalem: ${b.kalemSayisi}',
+                                  if (b.durum != null) 'Durum: ${b.durum}',
+                                ].join(' • ');
+
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 4),
+                                  leading:
+                                      const Icon(Icons.description_outlined),
+                                  title: Text(b.beyannameNo,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600)),
+                                  subtitle:
+                                      subtitle.isEmpty ? null : Text(subtitle),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => _openBeyanname(b.beyannameNo),
+                                );
+                              },
+                            )),
+            )
           ],
         ));
   }

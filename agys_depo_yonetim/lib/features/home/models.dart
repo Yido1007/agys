@@ -26,6 +26,27 @@ class ApiEnvelope<T> {
   }
 }
 
+class BeyannameOzet {
+  final String beyannameNo;
+  final String? tarihText;
+  final int? kalemSayisi;
+  final String? durum;
+
+  BeyannameOzet({
+    required this.beyannameNo,
+    this.tarihText,
+    this.kalemSayisi,
+    this.durum,
+  });
+
+  factory BeyannameOzet.fromJson(Map<String, dynamic> j) => BeyannameOzet(
+        beyannameNo: (j['beyannameNo'] ?? j['no'] ?? '').toString(),
+        tarihText: j['tarih'] as String?,
+        kalemSayisi: (j['kalemSayisi'] ?? j['count']) as int?,
+        durum: j['durum'] as String?,
+      );
+}
+
 // === DTO'lar ===
 
 // 4.1 StokTutarlilikDTO  (alanlar: GirisBaslikId, GirisDetayId, BeyannameNo, KalemNo, UrunStokNo,

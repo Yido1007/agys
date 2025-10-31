@@ -7,13 +7,21 @@ class StokTutarlilikService {
   StokTutarlilikService(this._dio);
 
   // 5.1 Antrepo listesi: GET /antrepo/{antrepoId} → StokTutarlilikDTO[]  :contentReference[oaicite:6]{index=6}
-  Future<List<StokTutarlilikDTO>> listByAntrepo(int antrepoId) async {
+  Future<List<BeyannameOzet>> listByAntrepo(int antrepoId) async {
     final r = await _dio.get('/api/StokTutarlilik/antrepo/$antrepoId');
-    final env = ApiEnvelope.fromJson<List<StokTutarlilikDTO>>(
-      _asMap(r.data),
-      (v) => _mapList(v, (e) => StokTutarlilikDTO.fromJson(e)),
-    );
-    return env.data ?? const [];
+    final data = r.data;
+    List list;
+    if (data is List) {
+      list = data;
+    } else if (data is Map && (data['data'] is List)) {
+      list = data['data'];
+    } else {
+      list = const [];
+    }
+    return list
+        .whereType<Map>()
+        .map((e) => BeyannameOzet.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   // 5.2 Filtre: POST /filtrele  body: StokTutarlilikKriterDTO  → StokTutarlilikDTO[]  :contentReference[oaicite:7]{index=7}
